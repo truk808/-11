@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Игра престолов: интерактивный дашборд</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+:root{--bg:#f4f1ea;--card:#fff;--tx:#1c1a17;--mu:#6d675d;--ac:#a8842c;--br:#ddd6c6;--grid:#e6e0d2;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1514;--card:#17201f;--tx:#eceae4;--mu:#9aa5a2;--ac:#d4af5a;--br:#2a3836;--grid:#26332f;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0f1514;--card:#17201f;--tx:#eceae4;--mu:#9aa5a2;--ac:#d4af5a;--br:#2a3836;--grid:#26332f;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:16px;max-width:1300px;margin-inline:auto}
+h1{font-family:Georgia,"Times New Roman",serif;letter-spacing:.06em;font-size:1.6rem;margin:0 0 4px;color:var(--ac)}
+.sub{color:var(--mu);font-size:.9rem;margin-bottom:14px}
+.card{background:var(--card);border:1px solid var(--br);border-radius:12px;padding:14px}
+.load{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.load label{font-size:.85rem;color:var(--mu)}
+.flt{margin-bottom:12px;display:grid;gap:10px}
+.row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.row b{font-size:.8rem;color:var(--mu);min-width:92px}
+.chip{border:1px solid var(--br);background:transparent;color:var(--tx);border-radius:999px;padding:4px 12px;font-size:.82rem;cursor:pointer}
+.chip.on{background:var(--ac);color:#17140d;border-color:var(--ac);font-weight:600}
+.reset{margin-left:auto;border:1px solid var(--ac);color:var(--ac);background:none;border-radius:8px;padding:5px 12px;cursor:pointer}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:12px}
+.kpi small{color:var(--mu);font-size:.78rem}
+.kpi div{font-size:2rem;font-weight:700;color:var(--ac);margin-top:4px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:12px}
+.card h3{margin:0 0 8px;font-size:.95rem}
+.cv{position:relative;height:280px}
+.sc{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.85rem}
+th,td{padding:5px 8px;text-align:right;border-bottom:1px solid var(--br)}
+th:first-child,td:first-child{text-align:left}
+th{color:var(--mu);font-weight:600}
+td.h{text-align:center;color:#fff;min-width:48px}
+#msg{color:var(--mu);padding:20px;text-align:center}
+</style></head><body>
+<h1>GAME OF THRONES</h1>
+<div class="sub">Интерактивный дашборд смертей и сражений · лабораторная работа №10</div>
+<div class="card load">
+ <label>character-deaths.csv <input type="file" id="fd" accept=".csv"></label>
+ <label>battles.csv (необязательно) <input type="file" id="fb" accept=".csv"></label>
+</div>
+<div id="msg">Загрузите файл character-deaths.csv (и battles.csv) с Kaggle, чтобы построить дашборд. Данные обрабатываются только в вашем браузере.</div>
+<div id="app" hidden>
+ <div class="card flt">
+  <div class="row"><b>Год смерти (AC)</b><span id="fy" class="row"></span><button class="reset" id="rs">Сбросить фильтры</button></div>
+  <div class="row"><b>Книга</b><span id="fk" class="row"></span></div>
+  <div class="row"><b>Дом</b><span id="fh" class="row"></span></div>
+ </div>
+ <div class="kpis">
+  <div class="card kpi"><small>Всего персонажей в датасете</small><div id="k1">–</div></div>
+  <div class="card kpi"><small>Всего смертей (фильтр)</small><div id="k2">–</div></div>
+  <div class="card kpi"><small>Средний год смерти</small><div id="k3">–</div></div>
+  <div class="card kpi"><small>Самый смертоносный год</small><div id="k4">–</div></div>
+ </div>
+ <div class="grid">
+  <div class="card"><h3>Смерти по годам (по домам)</h3><div class="cv"><canvas id="c1"></canvas></div></div>
+  <div class="card"><h3>Доля смертей по домам</h3><div class="cv"><canvas id="c2"></canvas></div></div>
+  <div class="card"><h3>Смерти по книгам: динамика и накопление</h3><div class="cv"><canvas id="c3"></canvas></div></div>
+  <div class="card"><h3>Тепловая карта: дом × год</h3><div class="sc" id="hm"></div></div>
+  <div class="card"><h3>Топ-10 домов по числу смертей</h3><div class="sc" id="tb"></div></div>
+  <div class="card"><h3>Глава появления и глава смерти</h3><div class="cv"><canvas id="c4"></canvas></div></div>
+  <div class="card" style="grid-column:1/-1"><h3>Сражения по регионам (battles.csv)</h3><div class="cv"><canvas id="c5"></canvas></div></div>
+ </div>
+</div>
+<script>
+const PAL=["#d4af5a","#2fb5a3","#c8553d","#6f7fd1","#9a6bc4","#6aa84f","#e08a3c","#4aa3df"],OTHER="#7d8784";
+let D=[],B=[],TOP=[],Y=new Set,K=new Set,H=new Set,CH={};
+const $=id=>document.getElementById(id);
+const num=v=>{const n=Number(v);return v===null||v===""||v===undefined||isNaN(n)?null:n};
+const col=g=>g==="Прочие"?OTHER:PAL[TOP.indexOf(g)];
+const grp=h=>TOP.includes(h)?h:"Прочие";
+const read=(f,cb)=>Papa.parse(f,{header:true,skipEmptyLines:true,complete:r=>cb(r.data)});
+$("fd").onchange=e=>read(e.target.files[0],rows=>{
+ D=rows.map(r=>({n:r["Name"]||r["Character"],h:(r["Allegiances"]||"None").trim(),y:num(r["Death Year"]),b:num(r["Book of Death"]),c:num(r["Death Chapter"]),ic:num(r["Book Intro Chapter"])}));
+ D.forEach(d=>d.dead=d.y!==null);
+ const cnt={};D.filter(d=>d.dead).forEach(d=>cnt[d.h]=(cnt[d.h]||0)+1);
+ TOP=Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a]).slice(0,8);
+ $("msg").hidden=true;$("app").hidden=false;reset();
+});
+$("fb").onchange=e=>read(e.target.files[0],rows=>{B=rows.map(r=>({y:num(r.year),reg:r.region||"Неизвестно"}));if(D.length)draw()});
+$("rs").onclick=reset;
+function reset(){Y.clear();K.clear();H.clear();draw()}
+function flt(skip){return D.filter(d=>d.dead&&(skip==="y"||!Y.size||Y.has(d.y))&&(skip==="k"||!K.size||K.has(d.b))&&(skip==="h"||!H.size||H.has(d.h)))}
+function chips(el,vals,set,lab){
+ const w=$(el);w.innerHTML="";
+ const all=document.createElement("button");all.className="chip"+(set.size?"":" on");all.textContent="Все";all.onclick=()=>{set.clear();draw()};w.append(all);
+ vals.forEach(v=>{const b=document.createElement("button");b.className="chip"+(set.has(v)?" on":"");b.textContent=lab?lab(v):v;
+  b.onclick=()=>{set.has(v)?set.delete(v):set.add(v);draw()};w.append(b)});
+}
+const uniq=a=>[...new Set(a)].filter(v=>v!==null).sort((a,b)=>a-b);
+function mk(id,cfg){if(CH[id])CH[id].destroy();Chart.defaults.color=getComputedStyle(document.documentElement).getPropertyValue("--mu");
+ cfg.options=Object.assign({responsive:true,maintainAspectRatio:false},cfg.options);CH[id]=new Chart($(id),cfg)}
+function draw(){
+ const gridC=getComputedStyle(document.documentElement).getPropertyValue("--grid");
+ const all=D.filter(d=>d.dead);
+ chips("fy",uniq(all.map(d=>d.y)),Y);
+ chips("fk",uniq(flt("k").map(d=>d.b)),K,v=>"Книга "+v);
+ // каскад: список домов зависит от выбранных года и книги
+ const hc={};flt("h").forEach(d=>hc[d.h]=(hc[d.h]||0)+1);
+ [...H].forEach(h=>{if(!hc[h])H.delete(h)});
+ chips("fh",Object.keys(hc).sort((a,b)=>hc[b]-hc[a]).slice(0,14),H,v=>v+" ("+hc[v]+")");
+ const R=flt();
+ // KPI
+ $("k1").textContent=D.length;$("k2").textContent=R.length;
+ const ys=R.map(d=>d.y);$("k3").textContent=ys.length?(ys.reduce((a,b)=>a+b,0)/ys.length).toFixed(1):"–";
+ const yc={};R.forEach(d=>yc[d.y]=(yc[d.y]||0)+1);
+ const best=Object.keys(yc).sort((a,b)=>yc[b]-yc[a])[0];
+ $("k4").textContent=best?best+" AC ("+yc[best]+")":"–";
+ const years=uniq(all.map(d=>d.y)),gs=[...TOP,"Прочие"];
+ const m={};gs.forEach(g=>m[g]={});R.forEach(d=>{const g=grp(d.h);m[g][d.y]=(m[g][d.y]||0)+1});
+ // 1 столбцы
+ mk("c1",{type:"bar",data:{labels:years,datasets:gs.map(g=>({label:g,backgroundColor:col(g),data:years.map(y=>m[g][y]||0)}))},
+  options:{scales:{x:{stacked:true,grid:{color:gridC}},y:{stacked:true,grid:{color:gridC}}},plugins:{legend:{labels:{boxWidth:10}}}}});
+ // 2 кольцевая
+ const tot=gs.map(g=>Object.values(m[g]).reduce((a,b)=>a+b,0));
+ mk("c2",{type:"doughnut",data:{labels:gs,datasets:[{data:tot,backgroundColor:gs.map(col),borderWidth:0}]},options:{plugins:{legend:{position:"right",labels:{boxWidth:10}}}}});
+ // 3 линия
+ const bks=uniq(all.map(d=>d.b)),bc=bks.map(b=>R.filter(d=>d.b===b).length);let s=0;
+ mk("c3",{type:"line",data:{labels:bks.map(b=>"Книга "+b),datasets:[
+  {label:"Смерти",data:bc,borderColor:PAL[1],backgroundColor:PAL[1],tension:.3},
+  {label:"Накопительно",data:bc.map(v=>s+=v),borderColor:PAL[0],backgroundColor:PAL[0],tension:.3}]},
+  options:{scales:{x:{grid:{color:gridC}},y:{grid:{color:gridC}}}}});
+ // 4 тепловая карта
+ const mx=Math.max(1,...gs.flatMap(g=>years.map(y=>m[g][y]||0)));
+ $("hm").innerHTML="<table><tr><th>Дом</th>"+years.map(y=>"<th>"+y+"</th>").join("")+"</tr>"+
+  gs.map(g=>"<tr><td>"+g+"</td>"+years.map(y=>{const v=m[g][y]||0;
+   return '<td class="h" style="background:rgba(47,181,163,'+(v?(.15+.85*v/mx).toFixed(2):0.05)+')">'+v+"</td>"}).join("")+"</tr>").join("")+"</table>";
+ // 5 топ-10
+ const hs={};R.forEach(d=>{(hs[d.h]=hs[d.h]||[]).push(d.y)});
+ const top=Object.entries(hs).sort((a,b)=>b[1].length-a[1].length).slice(0,10);
+ $("tb").innerHTML="<table><tr><th>Дом</th><th>Смертей</th><th>% от всех</th><th>Ср. год</th></tr>"+
+  top.map(([h,a])=>"<tr><td>"+h+"</td><td>"+a.length+"</td><td>"+(100*a.length/R.length).toFixed(1)+"%</td><td>"+(a.reduce((x,y)=>x+y,0)/a.length).toFixed(1)+"</td></tr>").join("")+"</table>";
+ // 6 scatter
+ mk("c4",{type:"scatter",data:{datasets:gs.map(g=>({label:g,backgroundColor:col(g),pointRadius:3,
+  data:R.filter(d=>grp(d.h)===g&&d.c!==null&&d.ic!==null).map(d=>({x:d.ic,y:d.c}))}))},
+  options:{scales:{x:{title:{display:true,text:"Глава появления"},grid:{color:gridC}},y:{title:{display:true,text:"Глава смерти"},grid:{color:gridC}}},plugins:{legend:{labels:{boxWidth:10}}}}});
+ // 7 сражения по регионам (учитывает фильтр года)
+ const rb={};B.filter(b=>!Y.size||Y.has(b.y)).forEach(b=>rb[b.reg]=(rb[b.reg]||0)+1);
+ mk("c5",{type:"bar",data:{labels:Object.keys(rb),datasets:[{label:"Сражений",backgroundColor:PAL[2],data:Object.values(rb)}]},
+  options:{plugins:{legend:{display:false}},scales:{x:{grid:{color:gridC}},y:{grid:{color:gridC},ticks:{precision:0}}}}});
+}
+</script></body></html>
